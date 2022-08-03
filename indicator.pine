@@ -1,0 +1,296 @@
+//@version=5
+strategy('KAMA+ KDJ et ADX and DI', overlay=true, initial_capital=1000, commission_value=0.05, default_qty_value=100, default_qty_type=strategy.percent_of_equity)
+
+
+
+//indicateur ADX and DI
+
+len = input(59)
+th = input(20)
+
+TrueRange = math.max(math.max(high - low, math.abs(high - nz(close[1]))), math.abs(low - nz(close[1])))
+DirectionalMovementPlus = high - nz(high[1]) > nz(low[1]) - low ? math.max(high - nz(high[1]), 0) : 0
+DirectionalMovementMinus = nz(low[1]) - low > high - nz(high[1]) ? math.max(nz(low[1]) - low, 0) : 0
+
+SmoothedTrueRange = 0.0
+SmoothedTrueRange := nz(SmoothedTrueRange[1]) - nz(SmoothedTrueRange[1]) / len + TrueRange
+
+SmoothedDirectionalMovementPlus = 0.0
+SmoothedDirectionalMovementPlus := nz(SmoothedDirectionalMovementPlus[1]) - nz(SmoothedDirectionalMovementPlus[1]) / len + DirectionalMovementPlus
+
+SmoothedDirectionalMovementMinus = 0.0
+SmoothedDirectionalMovementMinus := nz(SmoothedDirectionalMovementMinus[1]) - nz(SmoothedDirectionalMovementMinus[1]) / len + DirectionalMovementMinus
+
+DIPlus = SmoothedDirectionalMovementPlus / SmoothedTrueRange * 100
+DIMinus = SmoothedDirectionalMovementMinus / SmoothedTrueRange * 100
+DX = math.abs(DIPlus - DIMinus) / (DIPlus + DIMinus) * 100
+ADX = ta.sma(DX, len)
+
+//plot(DIPlus, color=color.green, title="DI+")
+//plot(DIMinus, color=color.red, title="DI-")
+//plot(ADX, color=color.navy, title="ADX")
+//hline(th, color=color.black)
+
+
+//indicateur 2 KAMA
+
+Price = input(hl2, title='Price')
+PeriodF = input(14, title='PeriodF')
+PeriodS = input(56, title='PeriodS')
+EnableSmooth = input(false, title='EnableSmooth')
+
+AMA(Period, Price) =>
+    //Vars: 
+    Noise = 0.00
+    Signal = 0.00
+    Diff = 0.00
+    efRatio = 0.00
+    Smooth = 1.00
+    Fastest = 0.6667
+    Slowest = 0.0645
+    AdaptMA = 0.00
+    AMA = 0.00
+
+    Diff := math.abs(Price - nz(Price[1]))
+    if bar_index <= Period
+        AdaptMA := Price
+        AdaptMA
+    if bar_index > Period
+        Signal := math.abs(Price - nz(Price[Period]))
+        Noise := math.sum(Diff, Period)
+        efRatio := Signal / Noise
+        Smooth := math.pow(efRatio * (Fastest - Slowest) + Slowest, 2)
+        AdaptMA := nz(AdaptMA[1]) + Smooth * (Price - nz(AdaptMA[1]))
+        AdaptMA
+    AMA := AdaptMA
+    AMA
+
+AMAF(Period, Pcnt, Price) =>
+    //Vars: 
+    Noise = 0.00
+    Signal = 0.00
+    Diff = 0.00
+    efRatio = 0.00
+    Smooth = 1.00
+    Fastest = 0.6667
+    Slowest = 0.0645
+    AdaptMA = 0.00
+    AMAFltr = 0.00
+    AMAF = 0.00
+
+    Diff := math.abs(Price - nz(Price[1]))
+    if bar_index <= Period
+        AdaptMA := Price
+        AdaptMA
+
+    if bar_index > Period
+        Signal := math.abs(Price - nz(Price[Period]))
+        Noise := math.sum(Diff, Period)
+        efRatio := Signal / Noise
+        Smooth := math.pow(efRatio * (Fastest - Slowest) + Slowest, 2)
+        AdaptMA := nz(AdaptMA[1]) + Smooth * (Price - nz(AdaptMA[1]))
+        AMAFltr := ta.stdev(AdaptMA - nz(AdaptMA[1]), Period) * Pcnt
+        AMAFltr
+    AMAF := AMAFltr
+    AMAF
+
+//Vars: 
+AMAValF = 0.00
+AMAValS = 0.00
+
+AMAValF := EnableSmooth ? ta.linreg(AMA(PeriodF, Price), PeriodF, 0) : AMA(PeriodF, Price)
+AMAValS := EnableSmooth ? ta.linreg(AMA(PeriodS, Price), PeriodS, 0) : AMA(PeriodS, Price)
+
+//Plot1 = plot(AMAValF, "AMAValF", color=color.yellow, linewidth =2)
+//Plot2 = plot(AMAValS, "AMAValS", color=color.fuchsia, linewidth =2)
+//fill(Plot1, Plot2, color=AMAValF>AMAValS ? color.yellow : color.fuchsia, transp=60)
+
+long = ta.crossover(AMAValF, AMAValS)
+short = ta.crossunder(AMAValF, AMAValS)
+
+// Plots labels
+//l = short ? 
+//       label.new (bar_index, AMAValF, "SELL", color=color.red, textcolor=color.white, style=label.style_labeldown, yloc=yloc.price, size=size.small) :
+//      long ?
+//          label.new (bar_index, AMAValF, "BUY", color=color.green, textcolor=color.white, style=label.style_labelup, yloc=yloc.price, size=size.small) :
+//          na
+
+
+
+//indicateur 3 KDJ
+
+ilong = input(30, title='period')
+isig = input(8, title='signal')
+m = 1
+c = close
+h = ta.highest(high, ilong)
+l = ta.lowest(low, ilong)
+RSV = 100 * ((c - l) / (h - l))
+pK = 0.0
+pD = 0.0
+pK := (m * RSV + (isig - m) * nz(pK[1])) / isig
+pD := (m * pK + (isig - m) * nz(pD[1])) / isig
+pJ = 3 * pK - 2 * pD
+
+//bgcolor(pJ>pD? color.green : color.red, transp=70)
+
+
+
+//indicateur 4 ATR SL
+
+length = input.int(title='Length', defval=14, minval=1)
+smoothing = input.string(title='Smoothing', defval='RMA', options=['RMA', 'SMA', 'EMA', 'WMA'])
+m1 = input(1.5, 'Multiplier')
+src1 = input(high)
+src2 = input(low)
+pline = input(true, 'Show Price Lines')
+col1 = input(color.blue, 'ATR Text Color')
+col2 = input.color(color.teal, 'Low Text Color', inline='1')
+col3 = input.color(color.red, 'High Text Color', inline='2')
+
+collong = input.color(color.red, 'Low Line Color', inline='1')
+colshort = input.color(color.orange, 'High Line Color', inline='2')
+
+ma_function(source, length) =>
+    if smoothing == 'RMA'
+        ta.rma(source, length)
+    else
+        if smoothing == 'SMA'
+            ta.sma(source, length)
+        else
+            if smoothing == 'EMA'
+                ta.ema(source, length)
+            else
+                ta.wma(source, length)
+
+a = ma_function(ta.tr(true), length) * m1
+x = ma_function(ta.tr(true), length) * m1 + src1
+x2 = src2 - ma_function(ta.tr(true), length) * m1
+
+p1 = plot(x, title='ATR Short Stop Loss', color=colshort, trackprice=pline ? true : false, transp=20)
+p2 = plot(x2, title='ATR Long Stop Loss', color=collong, trackprice=pline ? true : false, transp=20)
+
+var table Table = table.new(position.bottom_center, 3, 1, border_width=3)
+
+f_fillCell(_table, _column, _row, _value, _timeframe) =>
+
+    _cellText = _timeframe + str.tostring(_value, '#.#')
+    table.cell(_table, _column, _row, _cellText, text_color=col1)
+    table.cell_set_text_color(Table, 1, 0, color.new(col3, transp=0))
+    table.cell_set_text_color(Table, 2, 0, color.new(col2, transp=0))
+
+if barstate.islast
+    f_fillCell(Table, 0, 0, a, 'ATR: ')
+    f_fillCell(Table, 1, 0, x, 'H: ')
+    f_fillCell(Table, 2, 0, x2, 'L: ')
+
+
+
+//longCondition = crossover(sma(close, 14), sma(close, 28))
+//if (longCondition)
+//    strategy.entry("My Long Entry Id", strategy.long)
+
+//shortCondition = crossunder(sma(close, 14), sma(close, 28))
+//if (shortCondition)
+//    strategy.entry("My Short Entry Id", strategy.short)
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Conditions long 
+
+KDJOKLONG = pJ > pD
+ADXOKLONG = DIPlus > DIMinus
+bgcolor(ADXOKLONG ? color.new(color.green, 80) : color.new(color.red, 100), transp=90)
+
+LongConditionsok = ADXOKLONG and KDJOKLONG
+LongSignal = LongConditionsok and long
+bgcolor(LongSignal ? color.new(color.green, 10) : color.new(color.red, 100), transp=90)
+
+//Strategy entry long 
+
+if LongSignal
+    strategy.entry('enterlong', strategy.long)
+
+//Entry point retain values 
+
+EnteredLong = strategy.position_size[0] > strategy.position_size[1]
+Enteredlongvalue = ta.valuewhen(EnteredLong, open, 0)
+//EnteredlongP1Value = valuewhen(EnteredLong,x,0)
+EnteredlongP2Value = ta.valuewhen(EnteredLong, x2, 0)
+
+plot(EnteredlongP2Value, 'Stoploss', color=color.new(color.red, 0), linewidth=3)
+
+//Calcul TP
+
+longrisk = (Enteredlongvalue - EnteredlongP2Value) / Enteredlongvalue * 100
+RatioRisk = input(1.5, title='RatioRisk')
+valuerisk = longrisk * RatioRisk
+
+TPLongvalue = Enteredlongvalue + Enteredlongvalue * valuerisk / 100
+plot(TPLongvalue, 'TakeProfitLong', color=color.new(color.green, 0), linewidth=3)
+
+TPlong = ta.crossover(high, TPLongvalue)
+
+
+// StopLoss Long 
+
+StopLong = ta.crossunder(low, EnteredlongP2Value)
+
+
+// Strategy long exit 
+
+if TPlong or StopLong
+    strategy.close('enterlong')
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//Condition Short 
+
+KDJOKSHORT = pJ < pD
+ADXOKSHORT = DIPlus < DIMinus
+//bgcolor(ADXOKSHORT ? color.new(color.blue,60) : color.new(color.red, 100))
+ShortConditionsok = ADXOKSHORT and KDJOKSHORT
+bgcolor(ShortConditionsok ? color.new(color.blue, 80) : color.new(color.red, 100), transp=90)
+
+ShortSignal = ShortConditionsok and short
+bgcolor(ShortSignal ? color.new(color.orange, 0) : color.new(color.red, 100), transp=90)
+
+//Strategy entry short 
+
+if ShortSignal
+    strategy.entry('Short', strategy.short)
+
+//Entry point retain values 
+
+EnteredShort = strategy.position_size[1] > strategy.position_size[0]
+EnteredShortvalue = ta.valuewhen(EnteredShort, close, 0)
+EnteredShortP1value = ta.valuewhen(EnteredShort, x, 0)
+
+plot(EnteredShortP1value, 'StopLossShort', color=color.new(color.orange, 0), linewidth=3)
+
+//Calcul TP short
+
+Shortrisk = (EnteredShortvalue - EnteredShortP1value) / EnteredShortvalue * 100
+RatioRiskShort = input(1.5, title='RatioRiskShort')
+valueriskShort = Shortrisk * RatioRiskShort
+
+TPShortvalue = EnteredShortvalue + EnteredShortvalue * valueriskShort / 100
+plot(TPShortvalue, 'TakeProfitShort', color=color.new(color.blue, 0), linewidth=3)
+
+TPShort = ta.crossunder(low, TPShortvalue)
+
+
+// StopLoss Short 
+
+StopShort = close > EnteredShortP1value
+
+plot(StopShort ? 1 : 0)
+
+// Strategy long exit 
+
+if StopShort
+    strategy.close('Short')
