@@ -286,9 +286,9 @@ TPShort = ta.crossunder(low, TPShortvalue)
 
 // StopLoss Short 
 
-StopShort = close > EnteredShortP1value
+StopShort = ta.crossover(high, EnteredShortP1value)
 
 // Strategy long exit 
 
-if StopShort
+if StopShort// or TPShort
     strategy.close('Short')
