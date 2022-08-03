@@ -288,8 +288,6 @@ TPShort = ta.crossunder(low, TPShortvalue)
 
 StopShort = close > EnteredShortP1value
 
-plot(StopShort ? 1 : 0)
-
 // Strategy long exit 
 
 if StopShort
